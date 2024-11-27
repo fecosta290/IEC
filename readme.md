@@ -1,6 +1,6 @@
-# Sistema de Monitoramento com Prometheus
+# Monitoramento com Prometheus e Grafana
 
-Este projeto configura um sistema de monitoramento utilizando o **Prometheus** e regras de alertas específicas para garantir a saúde e o desempenho adequado da infraestrutura do servidor. As métricas monitoradas incluem CPU, carga do sistema, memória, swap e espaço em disco.
+Este projeto configura um sistema de monitoramento utilizando o **Prometheus** e **Grafana** e regras de alertas específicas para garantir a saúde e o desempenho adequado da infraestrutura do servidor. As métricas monitoradas incluem CPU, carga do sistema, memória, swap e espaço em disco.
 
 ## Visão Geral
 
@@ -10,14 +10,211 @@ O **Prometheus** é uma ferramenta de monitoramento e alerta open-source que col
 - **Prometheus**: Coleta e armazena as métricas.
 - **Alertmanager**: Gerencia os alertas e os envia para canais como e-mail, Slack ou outras plataformas.
 - **Node Exporter**: Exporta métricas de sistemas operacionais, como CPU, memória, disco e rede.
+- **Grafana**: gera dashboards com base nas metricas armazenadas pelo Prometheus
 
 ## Como Funciona o Monitoramento
 
 ### Instalação e Configuração:
 
-1. O **Prometheus** é configurado para coletar métricas de sistemas utilizando o **Node Exporter**.
-2. As métricas são extraídas em intervalos definidos e armazenadas no **Prometheus**.
-3. As regras de alerta são configuradas para disparar notificações quando certos thresholds (limites) são atingidos.
+---
+
+## Requisitos
+- **Sistema operacional**: Ubuntu 22.04 LTS
+- **Privilégios**: Acesso root ou um usuário com privilégios `sudo`
+- **Conexão**: Necessário acesso à internet
+
+---
+
+
+## Passo 1: Instalar o Prometheus
+
+1. **Atualizar pacotes**  
+   ```bash
+   sudo apt update -y
+   ```
+2. **Criar o usuário Prometheus**
+    ```bash
+   sudo useradd --no-create-home --shell /bin/false prometheus
+   ```
+3. **Criar diretórios de configuração e dados**
+
+    ```bash
+    sudo mkdir /etc/prometheus
+    sudo mkdir /var/lib/prometheus
+    sudo chown prometheus:prometheus /var/lib/prometheus
+    ```
+4. **Baixar e extrair o Prometheus**
+    ```bash
+    cd /tmp
+    wget https://github.com/prometheus/prometheus/releases/download/v2.46.0/prometheus-2.46.0.linux-amd64.tar.gz
+    tar -xvf prometheus-2.46.0.linux-amd64.tar.gz
+    cd prometheus-2.46.0.linux-amd64    
+    ```
+5. **Mover arquivos de configuração e binários**
+
+    ```bash
+    sudo mv console* /etc/prometheus
+    sudo mv prometheus.yml /etc/prometheus
+    sudo chown -R prometheus:prometheus /etc/prometheus
+    sudo mv prometheus /usr/local/bin/
+    ```
+6. **Configurar o serviço Prometheus**
+Crie o arquivo de serviço com:
+
+    ```bash 
+    sudo nano /etc/systemd/system/prometheus.service
+    ```
+Cole o seguinte conteúdo no arquivo:
+
+    ```bash
+    [Unit]
+    Description=Prometheus
+    Wants=network-online.target
+    After=network-online.target
+
+    [Service]
+    User=prometheus
+    Group=prometheus
+    Type=simple
+    ExecStart=/usr/local/bin/prometheus \
+        --config.file /etc/prometheus/prometheus.yml \
+        --storage.tsdb.path /var/lib/prometheus/ \
+        --web.console.templates=/etc/prometheus/consoles \
+        --web.console.libraries=/etc/prometheus/console_libraries
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+7. **Salvar e ativar o serviço**
+
+    ```bash
+    sudo systemctl start prometheus
+    sudo systemctl enable prometheus
+    sudo systemctl status prometheus
+    ```
+    ![Status do prometheus](img/prometheus1.png)
+
+
+8. **acessar no seu navegador**
+http://<ip_da_maquina>:9090
+
+
+## Passo 2: Instalar o Node Exporter
+1. **Baixar e extrair o Node Exporter**  
+   ```bash
+    cd /tmp
+    wget https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz
+    sudo tar xvfz node_exporter-*.*-amd64.tar.gz
+    sudo mv node_exporter-*.*-amd64/node_exporter /usr/local/bin/
+   ```
+
+2. **Criar o usuário Node Exporter**
+    ```bash
+    sudo useradd -rs /bin/false node_exporter    
+    ```
+3. **Configurar o serviço Node Exporter**
+Crie o arquivo com:
+
+    ```bash
+    sudo nano /etc/systemd/system/node_exporter.service
+    ```
+Cole o seguinte conteúdo:
+
+    ```bash
+    [Unit]
+    Description=Node Exporter
+    After=network.target
+
+    [Service]
+    User=node_exporter
+    Group=node_exporter
+    Type=simple
+    ExecStart=/usr/local/bin/node_exporter
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+4. **Salvar e ativar o serviço**
+
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl start node_exporter
+    sudo systemctl enable node_exporter
+    sudo systemctl status node_exporter
+    ```
+
+    ![Status do node_exporte](img/node-exporter-status-1024x302.png)
+
+5. **Adicionar o Node Exporter no Prometheus**
+Edite o arquivo de configuração do Prometheus:
+
+    ```bash
+    sudo nano /etc/prometheus/prometheus.yml
+    ```
+
+    ```- job_name: 'Node_Exporter'
+        scrape_interval: 5s
+        static_configs:
+            - targets: ['<ip_da_maquina>:9100']
+    ```
+
+6. **Reiniciar o Prometheus**
+    ```bash
+    sudo systemctl restart prometheus
+    ```
+
+## Passo 2: Instalar Grafana
+1. **Adicionar o repositório Grafana**
+
+    ```bash
+    wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+    sudo add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
+    sudo apt update
+    ```
+2. **Instalar e ativar o Grafana**
+
+    ```bash
+    sudo apt install grafana -y
+    sudo systemctl start grafana-server
+    sudo systemctl enable grafana-server
+    sudo systemctl status grafana-server
+    ```
+    ![Status do Grafana](img/Grafana-status-1024x314.png)
+
+3. **Acessar o Grafana**
+
+    ```bash
+    http://<ip_da_maquina>:3000
+    ```
+    ![Interface inicial do Grafana](img/image.png)
+
+    Usuário: admin
+    Senha: admin
+
+    ![](img/grafana.png)
+
+    No Grafana, clique em Add Data Source e selecione Prometheus.
+
+    ![](img/grafana-data-source.png)
+
+    Insira a URL do Prometheus, por exemplo: http://<ip_da_maquina>:9090
+
+    ![](img/data-source-1.png)    
+
+    Clique em Save & Test para validar.
+
+    Clique no ícone + no menu esquerdo e selecione Import.
+    ![](/img/import-dashboard-grafana-1024x239)
+
+
+    Use o ID 14513 para importar um dashboard do Grafana.com.
+    ![](/img/import-dashboard-grafana-1.png)
+
+    Selecione o Prometheus como fonte de dados e clique em Import.
+
+    Agora seu Dashboard está rodando!.
+    ![](/img/grafanaMain.png)
 
 ### Regras de Alerta:
 
